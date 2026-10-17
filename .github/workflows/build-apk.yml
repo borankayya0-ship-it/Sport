@@ -1,10 +1,11 @@
 
-name: Build 3D Model Viewer APK
+name: 3D Model Viewer APK Oluştur
 
 on:
   workflow_dispatch:
   push:
-    branches: [ "main" ]
+    branches:
+      - main
 
 permissions:
   contents: read
@@ -14,285 +15,38 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout
+      - name: Depoyu indir
         uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Java 17 kur
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: '17'
 
-      - name: Setup Android SDK
+      - name: Android SDK kur
         uses: android-actions/setup-android@v3
 
-      - name: Create Android project
-        shell: bash
+      - name: Android SDK paketlerini kur
         run: |
-          mkdir -p app/src/main/assets
-          mkdir -p app/src/main/java/com/example/modelviewer
+          sdkmanager --install \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+          yes | sdkmanager --licenses
 
-          cat > settings.gradle <<'EOF'
-          pluginManagement {
-              repositories {
-                  google()
-                  mavenCentral()
-                  gradlePluginPortal()
-              }
-          }
-          dependencyResolutionManagement {
-              repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
-              repositories {
-                  google()
-                  mavenCentral()
-              }
-          }
-          rootProject.name = "ModelViewer3D"
-          include(":app")
-          EOF
+      - name: Gradle 8.9 kur ve yapılandır
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
 
-          cat > build.gradle <<'EOF'
-          plugins {
-              id 'com.android.application' version '8.7.3' apply false
-          }
-          EOF
+      - name: APK derle
+        run: gradle --no-daemon --stacktrace assembleDebug
 
-          cat > gradle.properties <<'EOF'
-          org.gradle.jvmargs=-Xmx2048m -Dfile.encoding=UTF-8
-          android.useAndroidX=true
-          EOF
-
-          cat > app/build.gradle <<'EOF'
-          plugins {
-              id 'com.android.application'
-          }
-
-          android {
-              namespace 'com.example.modelviewer'
-              compileSdk 35
-
-              defaultConfig {
-                  applicationId 'com.example.modelviewer'
-                  minSdk 23
-                  targetSdk 35
-                  versionCode 1
-                  versionName '1.0'
-              }
-          }
-
-          dependencies {
-              implementation 'androidx.appcompat:appcompat:1.7.0'
-              implementation 'androidx.webkit:webkit:1.12.1'
-          }
-          EOF
-
-          cat > app/src/main/AndroidManifest.xml <<'EOF'
-          <manifest xmlns:android="http://schemas.android.com/apk/res/android">
-              <application
-                  android:theme="@android:style/Theme.Material.NoActionBar"
-                  android:label="3D Model Viewer"
-                  android:usesCleartextTraffic="false">
-                  <activity
-                      android:name=".MainActivity"
-                      android:exported="true"
-                      android:screenOrientation="unspecified">
-                      <intent-filter>
-                          <action android:name="android.intent.action.MAIN"/>
-                          <category android:name="android.intent.category.LAUNCHER"/>
-                      </intent-filter>
-                  </activity>
-              </application>
-          </manifest>
-          EOF
-
-          cat > app/src/main/java/com/example/modelviewer/MainActivity.java <<'EOF'
-          package com.example.modelviewer;
-
-          import android.app.Activity;
-          import android.os.Bundle;
-          import android.content.Intent;
-          import android.net.Uri;
-          import android.webkit.WebView;
-          import android.webkit.WebViewClient;
-          import android.webkit.WebChromeClient;
-          import android.webkit.JavascriptInterface;
-          import android.webkit.ValueCallback;
-          import android.view.View;
-          import android.graphics.Color;
-
-          public class MainActivity extends Activity {
-              private WebView web;
-              private ValueCallback<Uri[]> uploadCallback;
-              private static final int PICK_MODEL = 42;
-
-              @Override
-              public void onCreate(Bundle state) {
-                  super.onCreate(state);
-                  getWindow().setStatusBarColor(Color.rgb(10, 14, 25));
-                  getWindow().setNavigationBarColor(Color.rgb(10, 14, 25));
-
-                  web = new WebView(this);
-                  web.setBackgroundColor(Color.rgb(10, 14, 25));
-                  web.getSettings().setJavaScriptEnabled(true);
-                  web.getSettings().setDomStorageEnabled(true);
-                  web.getSettings().setAllowFileAccess(true);
-                  web.getSettings().setAllowContentAccess(true);
-                  web.setWebViewClient(new WebViewClient());
-                  web.setWebChromeClient(new WebChromeClient() {
-                      @Override
-                      public boolean onShowFileChooser(
-                              WebView view,
-                              ValueCallback<Uri[]> callback,
-                              FileChooserParams params) {
-                          if (uploadCallback != null) {
-                              uploadCallback.onReceiveValue(null);
-                          }
-                          uploadCallback = callback;
-                          Intent intent = new Intent(Intent.ACTION_GET_CONTENT);
-                          intent.setType("*/*");
-                          intent.addCategory(Intent.CATEGORY_OPENABLE);
-                          intent.putExtra(Intent.EXTRA_MIME_TYPES,
-                              new String[] {
-                                  "model/gltf-binary",
-                                  "model/gltf+json",
-                                  "application/octet-stream"
-                              });
-                          startActivityForResult(
-                              Intent.createChooser(intent, "3D model seç"),
-                              PICK_MODEL);
-                          return true;
-                      }
-                  });
-
-                  setContentView(web);
-                  web.loadUrl("file:///android_asset/index.html");
-              }
-
-              @Override
-              protected void onActivityResult(
-                  int requestCode, int resultCode, Intent data) {
-                  super.onActivityResult(requestCode, resultCode, data);
-                  if (requestCode == PICK_MODEL && uploadCallback != null) {
-                      Uri[] result = null;
-                      if (resultCode == RESULT_OK && data != null
-                              && data.getData() != null) {
-                          result = new Uri[] { data.getData() };
-                      }
-                      uploadCallback.onReceiveValue(result);
-                      uploadCallback = null;
-                  }
-              }
-
-              @Override
-              public void onBackPressed() {
-                  if (web != null && web.canGoBack()) {
-                      web.goBack();
-                  } else {
-                      super.onBackPressed();
-                  }
-              }
-          }
-          EOF
-
-          cat > app/src/main/assets/index.html <<'EOF'
-          <!DOCTYPE html>
-          <html lang="tr">
-          <head>
-          <meta charset="UTF-8">
-          <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-          <title>3D Model Studio</title>
-          <style>
-          *{box-sizing:border-box}
-          body{margin:0;background:#0a0e19;color:#edf3ff;font-family:Arial,sans-serif}
-          header{padding:20px;background:#11182a;border-bottom:1px solid #28334b}
-          h1{margin:0;font-size:22px}header p{color:#93a7ca;font-size:13px}
-          main{padding:14px;max-width:900px;margin:auto}
-          #viewer{height:55vh;min-height:320px;background:radial-gradient(circle,#202d49,#080b13);border:1px solid #35425d;border-radius:18px;overflow:hidden;position:relative}
-          model-viewer{width:100%;height:100%;background:transparent}
-          .controls{display:flex;flex-wrap:wrap;gap:9px;margin-top:14px}
-          button,.pick{border:0;border-radius:10px;padding:13px 15px;background:#477bff;color:white;font-weight:bold;font-size:14px;cursor:pointer}
-          .secondary{background:#202b41;color:#e4ecff}
-          input[type=file]{display:none}
-          #status{color:#a9bad7;font-size:13px;margin:13px 2px}
-          .info{padding:14px;background:#11182a;border:1px solid #28334b;border-radius:12px;margin-top:12px;font-size:13px;color:#b9c8e2;line-height:1.6}
-          </style>
-          <script type="module" src="https://unpkg.com/@google/model-viewer@4.0.0/dist/model-viewer.min.js"></script>
-          </head>
-          <body>
-          <header>
-          <h1>◈ 3D MODEL STUDIO</h1>
-          <p>GLB / GLTF model görüntüleyici</p>
-          </header>
-          <main>
-          <div id="viewer">
-          <model-viewer id="model" camera-controls auto-rotate
-            rotation-per-second="20deg" shadow-intensity="1"
-            exposure="1" environment-image="neutral"
-            interaction-prompt="auto"
-            alt="3D model önizlemesi">
-          </model-viewer>
-          </div>
-          <div class="controls">
-          <label class="pick" for="file">＋ Model yükle</label>
-          <input id="file" type="file" accept=".glb,.gltf,model/gltf-binary,model/gltf+json">
-          <button class="secondary" id="reset">⟳ Kamerayı sıfırla</button>
-          <button class="secondary" id="rotate">Döndürmeyi durdur</button>
-          </div>
-          <div id="status">Bir .glb veya .gltf modeli seçerek başla.</div>
-          <div class="info">
-          <b>Kontroller</b><br>
-          • Parmağınla sürükle: modeli döndür.<br>
-          • İki parmakla: yakınlaştır ve uzaklaştır.<br>
-          • Model yükle: cihazından 3D dosya seç.<br>
-          • GLB dosyaları genellikle model ve dokuları birlikte içerir.
-          </div>
-          </main>
-          <script>
-          const viewer=document.getElementById('model');
-          const file=document.getElementById('file');
-          const status=document.getElementById('status');
-          let currentUrl=null;
-          file.addEventListener('change',()=>{
-            const f=file.files&&file.files[0];
-            if(!f)return;
-            const ext=f.name.toLowerCase();
-            if(!ext.endsWith('.glb')&&!ext.endsWith('.gltf')){
-              status.textContent='Hata: .glb veya .gltf dosyası seç.';
-              return;
-            }
-            if(currentUrl)URL.revokeObjectURL(currentUrl);
-            currentUrl=URL.createObjectURL(f);
-            viewer.src=currentUrl;
-            status.textContent='Yükleniyor: '+f.name;
-            viewer.addEventListener('load',()=>{
-              status.textContent='Model hazır: '+f.name;
-            },{once:true});
-            viewer.addEventListener('error',()=>{
-              status.textContent='Model yüklenemedi. GLTF dosyasının harici dokuları veya internet bağlantısını kontrol et.';
-            },{once:true});
-          });
-          document.getElementById('reset').onclick=()=>{
-            viewer.cameraOrbit='0deg 75deg 105%';
-            viewer.cameraTarget='auto';
-          };
-          document.getElementById('rotate').onclick=e=>{
-            viewer.autoRotate=!viewer.autoRotate;
-            e.target.textContent=viewer.autoRotate?'Döndürmeyi durdur':'Döndürmeyi başlat';
-          };
-          </script>
-          </body>
-          </html>
-          EOF
-
-      - name: Build debug APK
-        run: |
-          gradle wrapper --gradle-version 8.9
-          chmod +x gradlew
-          ./gradlew --no-daemon assembleDebug
-
-      - name: Upload APK
+      - name: APK dosyasını yükle
         uses: actions/upload-artifact@v4
         with:
           name: 3D-Model-Viewer-APK
           path: app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+          
