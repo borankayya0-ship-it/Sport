@@ -1,0 +1,379 @@
+```html
+<!DOCTYPE html>
+<html lang="tr" class="h-full">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pro 3D Game Engine Studio</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/controls/OrbitControls.js"></script>
+    <style>
+        body { font-family: 'Inter', sans-serif; user-select: none; -webkit-user-select: none; }
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: #1e1e24; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 3px; }
+        .glow-effect { box-shadow: 0 0 20px rgba(99, 102, 241, 0.4); }
+    </style>
+</head>
+<body class="h-full bg-zinc-950 text-zinc-100 overflow-hidden flex flex-col">
+
+    <header class="bg-zinc-900 border-b border-zinc-800 px-4 py-2.5 flex items-center justify-between z-20 shadow-md">
+        <div class="flex items-center space-x-3">
+            <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center glow-effect">
+                <i class="fa-solid fa-cube text-white text-lg"></i>
+            </div>
+            <div>
+                <h1 class="font-bold text-sm tracking-wide text-zinc-200">PRO 3D GAME ENGINE <span class="text-xs bg-indigo-500/20 text-indigo-400 px-2 py-0.5 rounded-full border border-indigo-500/30">v2.4 Pro</span></h1>
+                <p class="text-xs text-zinc-400">Terrain, Physics Colliders, Camera Parenting & Joystick Controller</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-2">
+            <button id="btn-play" onclick="togglePlayMode()" class="flex items-center space-x-2 px-5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-medium text-sm transition-all shadow-lg shadow-emerald-900/45 cursor-pointer">
+                <i class="fa-solid fa-play" id="play-icon"></i>
+                <span id="play-text">Oyunu Başlat</span>
+            </button>
+            <button onclick="resetScene()" class="flex items-center space-x-1.5 px-3.5 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-sm transition-all cursor-pointer border border-zinc-700">
+                <i class="fa-solid fa-rotate-right"></i>
+                <span class="hidden sm:inline">Sıfırla</span>
+            </button>
+        </div>
+    </header>
+
+    <div class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
+
+        <div class="w-full md:w-72 bg-zinc-900/90 border-r border-zinc-800 flex flex-col z-10 shrink-0">
+            <div class="p-3 border-b border-zinc-800 flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400"><i class="fa-solid fa-folder-tree mr-1.5"></i> Sahne Hiyerarşisi</span>
+                <span class="text-[10px] bg-zinc-800 px-2 py-0.5 rounded text-zinc-400" id="object-count">3 Obje</span>
+            </div>
+            <div class="flex-1 overflow-y-auto p-2 space-y-1.5" id="hierarchy-list">
+                <!-- Populated dynamically -->
+            </div>
+            <div class="p-3 border-t border-zinc-800 bg-zinc-950/50">
+                <p class="text-[11px] text-zinc-400"><i class="fa-solid fa-circle-info text-indigo-400 mr-1"></i> Objeyi seçip sağ panelden Rigidbody & Collider ayarlarını düzenleyin.</p>
+            </div>
+        </div>
+
+        <div class="flex-1 relative bg-zinc-950 flex flex-col overflow-hidden" id="viewport-container">
+            <div class="absolute top-3 left-3 z-10 bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-zinc-800 text-xs flex items-center space-x-2 shadow">
+                <span class="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span id="viewport-mode-label" class="font-medium text-zinc-300">Düzenleme Modu (Editor)</span>
+            </div>
+
+            <!-- Three.js Canvas -->
+            <canvas id="renderCanvas" class="w-full h-full block cursor-grab active:cursor-grabbing"></canvas>
+
+            <!-- On-Screen Virtual Joystick (Active in Play Mode or Mobile) -->
+            <div id="virtual-joystick-container" class="absolute bottom-6 left-6 z-20 w-36 h-36 bg-zinc-900/40 backdrop-blur-md border border-zinc-700/50 rounded-full flex items-center justify-center touch-none hidden shadow-2xl">
+                <div id="joystick-base" class="w-full h-full relative rounded-full flex items-center justify-center">
+                    <div id="joystick-thumb" class="w-14 h-14 bg-indigo-600/90 hover:bg-indigo-500 rounded-full shadow-lg absolute transition-transform duration-75 flex items-center justify-center text-white text-xs">
+                        <i class="fa-solid fa-arrows-up-down-left-right opacity-70"></i>
+                    </div>
+                </div>
+            </div>
+
+            <div class="absolute bottom-3 right-3 z-10 bg-zinc-900/80 backdrop-blur-md px-3 py-1.5 rounded-lg border border-zinc-800 text-[11px] text-zinc-400 hidden md:block">
+                <span>İpucu: W/A/S/D veya Joystick ile hareket edin. Sol tık ile sahneyi döndürün.</span>
+            </div>
+        </div>
+
+        <div class="w-full md:w-80 bg-zinc-900/90 border-l border-zinc-800 flex flex-col z-10 shrink-0">
+            <div class="p-3 border-b border-zinc-800 flex items-center justify-between">
+                <span class="text-xs font-semibold uppercase tracking-wider text-zinc-400"><i class="fa-solid fa-sliders mr-1.5"></i> Özellik Denetçisi</span>
+                <span id="selected-object-name" class="text-xs font-bold text-indigo-400 truncate max-w-[140px]">Hiçbiri Seçilmedi</span>
+            </div>
+            
+            <div class="flex-1 overflow-y-auto p-4 space-y-5" id="inspector-content">
+                <div class="text-center py-12 text-zinc-600">
+                    <i class="fa-solid fa-cube text-3xl mb-2 opacity-30"></i>
+                    <p class="text-xs">Düzenlemek için sol hiyerarşiden bir obje seçin.</p>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <script>
+        // --- GAME ENGINE STATE & DATA ---
+        let scene, camera, renderer, orbitControls;
+        let gameObjects = [];
+        let selectedObject = null;
+        let isPlaying = false;
+        let clock = new THREE.Clock();
+
+        // Joystick State
+        let joystickActive = false;
+        let joystickVector = new THREE.Vector2(0, 0);
+        let joystickOrigin = { x: 0, y: 0 };
+
+        // Keyboard State
+        let keys = { w: false, a: false, s: false, d: false, ArrowUp: false, ArrowDown: false, ArrowLeft: false, ArrowRight: false };
+
+        // --- INITIALIZATION ---
+        window.addEventListener('load', () => {
+            initEngine();
+            setupEventListeners();
+            animate();
+        });
+
+        function initEngine() {
+            const container = document.getElementById('viewport-container');
+            const canvas = document.getElementById('renderCanvas');
+
+            // Scene
+            scene = new THREE.Scene();
+            scene.background = new THREE.Color(0x09090b);
+            scene.fog = new THREE.FogExp2(0x09090b, 0.015);
+
+            // Camera
+            camera = new THREE.PerspectiveCamera(60, container.clientWidth / container.clientHeight, 0.1, 1000);
+            camera.position.set(0, 8, 14);
+
+            // Renderer
+            renderer = new THREE.WebGLRenderer({ canvas: canvas, antialias: true, powerPreference: "high-performance" });
+            renderer.setSize(container.clientWidth, container.clientHeight);
+            renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+            renderer.shadowMap.enabled = true;
+            renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+            // Orbit Controls for Editor mode
+            orbitControls = new THREE.OrbitControls(camera, renderer.domElement);
+            orbitControls.enableDamping = true;
+            orbitControls.dampingFactor = 0.05;
+            orbitControls.maxPolarAngle = Math.PI / 2 - 0.05; // Don't go below ground
+
+            // Lighting
+            const ambientLight = new THREE.AmbientLight(0xffffff, 0.6);
+            scene.add(ambientLight);
+
+            const dirLight = new THREE.DirectionalLight(0xffffff, 1.2);
+            dirLight.position.set(15, 25, 15);
+            dirLight.castShadow = true;
+            dirLight.shadow.mapSize.width = 2048;
+            dirLight.shadow.mapSize.height = 2048;
+            dirLight.shadow.camera.near = 0.5;
+            dirLight.shadow.camera.far = 50;
+            const d = 15;
+            dirLight.shadow.camera.left = -d;
+            dirLight.shadow.camera.right = d;
+            dirLight.shadow.camera.top = d;
+            dirLight.shadow.camera.bottom = -d;
+            scene.add(dirLight);
+
+            // Create Default Scene Objects (Terrain, Animated Character, Camera Object)
+            createDefaultScene();
+            updateHierarchyUI();
+        }
+
+        // --- CREATE DEFAULT SCENE (Terrain + Character + Camera) ---
+        function createDefaultScene() {
+            // 1. TERRAIN MODEL
+            const terrainGeo = new THREE.BoxGeometry(30, 1, 30);
+            const terrainMat = new THREE.MeshStandardMaterial({ 
+                color: 0x27272a, 
+                roughness: 0.8,
+                metalness: 0.2
+            });
+            // Add grid lines texture effect
+            const terrainMesh = new THREE.Mesh(terrainGeo, terrainMat);
+            terrainMesh.position.set(0, -0.5, 0);
+            terrainMesh.receiveShadow = true;
+            scene.add(terrainMesh);
+
+            const terrainObj = {
+                id: 'obj_terrain',
+                name: 'Zemin (Terrain)',
+                type: 'terrain',
+                mesh: terrainMesh,
+                isCollider: true,
+                colliderType: 'Box',
+                useGravity: false,
+                isKinematic: true,
+                position: { x: 0, y: -0.5, z: 0 },
+                scale: { x: 30, y: 1, z: 30 }
+            };
+            gameObjects.push(terrainObj);
+
+            // 2. CHARACTER MODEL (Animated Procedural Humanoid Robot)
+            const characterGroup = new THREE.Group();
+            
+            // Body Parts for Animation
+            const bodyMat = new THREE.MeshStandardMaterial({ color: 0x6366f1, roughness: 0.3 });
+            const limbMat = new THREE.MeshStandardMaterial({ color: 0xa1a1aa, roughness: 0.5 });
+            
+            const torsoGeo = new THREE.BoxGeometry(0.8, 1.2, 0.5);
+            const torso = new THREE.Mesh(torsoGeo, bodyMat);
+            torso.position.y = 1.2;
+            torso.castShadow = true;
+            characterGroup.add(torso);
+
+            const headGeo = new THREE.SphereGeometry(0.35, 16, 16);
+            const head = new THREE.Mesh(headGeo, bodyMat);
+            head.position.y = 2.0;
+            head.castShadow = true;
+            characterGroup.add(head);
+
+            // Limbs for walking animation
+            const legGeo = new THREE.BoxGeometry(0.3, 0.9, 0.3);
+            legGeo.translate(0, -0.45, 0);
+            
+            const leftLeg = new THREE.Mesh(legGeo, limbMat);
+            leftLeg.position.set(-0.25, 0.6, 0);
+            leftLeg.name = 'leftLeg';
+            leftLeg.castShadow = true;
+            characterGroup.add(leftLeg);
+
+            const rightLeg = new THREE.Mesh(legGeo, limbMat);
+            rightLeg.position.set(0.25, 0.6, 0);
+            rightLeg.name = 'rightLeg';
+            rightLeg.castShadow = true;
+            characterGroup.add(rightLeg);
+
+            characterGroup.position.set(0, 0, 0);
+            scene.add(characterGroup);
+
+            const characterObj = {
+                id: 'obj_character',
+                name: 'Karakter (Animasyonlu)',
+                type: 'character',
+                mesh: characterGroup,
+                isCollider: true,
+                colliderType: 'Capsule',
+                useGravity: true,
+                mass: 1.0,
+                moveSpeed: 7.0,
+                velocity: new THREE.Vector3(0, 0, 0),
+                isGrounded: false,
+                position: { x: 0, y: 0, z: 0 },
+                rotation: { x: 0, y: 0, z: 0 }
+            };
+            gameObjects.push(characterObj);
+
+            // 3. CAMERA PARENT OBJECT (Follow Camera)
+            const cameraObj = {
+                id: 'obj_camera',
+                name: 'Karakter Kamerası',
+                type: 'camera',
+                mesh: null, // Virtual attachment
+                parentTargetId: 'obj_character',
+                offset: { x: 0, y: 3.5, z: -6.5 }
+            };
+            gameObjects.push(cameraObj);
+
+            // Select character by default
+            selectObject(characterObj.id);
+        }
+
+        // --- UI & HIERARCHY MANAGEMENT ---
+        function updateHierarchyUI() {
+            const list = document.getElementById('hierarchy-list');
+            list.innerHTML = '';
+            document.getElementById('object-count').innerText = `${gameObjects.length} Obje`;
+
+            gameObjects.forEach(obj => {
+                const item = document.createElement('div');
+                item.className = `flex items-center justify-between p-2.5 rounded-xl cursor-pointer transition-all ${selectedObject && selectedObject.id === obj.id ? 'bg-indigo-600/20 border border-indigo-500/40 text-indigo-300' : 'bg-zinc-900/60 hover:bg-zinc-800 text-zinc-300 border border-transparent'}`;
+                
+                let icon = 'fa-cube';
+                if (obj.type === 'terrain') icon = 'fa-mountain-sun';
+                if (obj.type === 'character') icon = 'fa-person-walking';
+                if (obj.type === 'camera') icon = 'fa-video';
+
+                item.innerHTML = `
+                    <div class="flex items-center space-x-2.5">
+                        <i class="fa-solid ${icon} text-sm text-indigo-400"></i>
+                        <span class="text-xs font-medium">${obj.name}</span>
+                    </div>
+                    <span class="text-[10px] bg-zinc-800 px-1.5 py-0.5 rounded text-zinc-400">${obj.type}</span>
+                `;
+                item.onclick = () => selectObject(obj.id);
+                list.appendChild(item);
+            });
+        }
+
+        function selectObject(id) {
+            selectedObject = gameObjects.find(o => o.id === id);
+            updateHierarchyUI();
+            updateInspectorUI();
+        }
+
+        function updateInspectorUI() {
+            const container = document.getElementById('inspector-content');
+            const titleEl = document.getElementById('selected-object-name');
+
+            if (!selectedObject) {
+                titleEl.innerText = 'Hiçbiri Seçilmedi';
+                container.innerHTML = `
+                    <div class="text-center py-12 text-zinc-600">
+                        <i class="fa-solid fa-cube text-3xl mb-2 opacity-30"></i>
+                        <p class="text-xs">Düzenlemek için sol hiyerarşiden bir obje seçin.</p>
+                    </div>
+                `;
+                return;
+            }
+
+            titleEl.innerText = selectedObject.name;
+            let html = `
+                <div class="space-y-4">
+                    <div>
+                        <label class="text-[11px] text-zinc-400 font-medium block mb-1">Obje Adı</label>
+                        <input type="text" value="${selectedObject.name}" onchange="updateObjProp('name', this.value)" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-3 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500">
+                    </div>
+            `;
+
+            // Transform section (if mesh exists)
+            if (selectedObject.mesh) {
+                html += `
+                    <div class="border-t border-zinc-800 pt-3">
+                        <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block mb-2"><i class="fa-solid fa-arrows-up-down-left-right mr-1"></i> Pozisyon & Transform</span>
+                        <div class="grid grid-cols-3 gap-2">
+                            <div>
+                                <span class="text-[10px] text-zinc-500 block">X</span>
+                                <input type="number" step="0.5" value="${selectedObject.mesh.position.x.toFixed(1)}" onchange="updateTransform('pos', 'x', this.value)" class="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200">
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-zinc-500 block">Y</span>
+                                <input type="number" step="0.5" value="${selectedObject.mesh.position.y.toFixed(1)}" onchange="updateTransform('pos', 'y', this.value)" class="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200">
+                            </div>
+                            <div>
+                                <span class="text-[10px] text-zinc-500 block">Z</span>
+                                <input type="number" step="0.5" value="${selectedObject.mesh.position.z.toFixed(1)}" onchange="updateTransform('pos', 'z', this.value)" class="w-full bg-zinc-950 border border-zinc-800 rounded px-2 py-1 text-xs text-zinc-200">
+                            </div>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Collider & Physics section
+            if (selectedObject.type === 'terrain' || selectedObject.type === 'character') {
+                html += `
+                    <div class="border-t border-zinc-800 pt-3 space-y-3">
+                        <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block"><i class="fa-solid fa-shield-halved mr-1"></i> Model Çarpıştırıcı (Collider)</span>
+                        
+                        <div class="flex items-center justify-between bg-zinc-950 p-2.5 rounded-lg border border-zinc-800">
+                            <span class="text-xs text-zinc-300">Collider Aktif</span>
+                            <input type="checkbox" ${selectedObject.isCollider ? 'checked' : ''} onchange="updateObjProp('isCollider', this.checked)" class="w-4 h-4 accent-indigo-600 rounded cursor-pointer">
+                        </div>
+
+                        <div>
+                            <label class="text-[10px] text-zinc-400 block mb-1">Collider Tipi</label>
+                            <select onchange="updateObjProp('colliderType', this.value)" class="w-full bg-zinc-950 border border-zinc-800 rounded-lg px-2.5 py-1.5 text-xs text-zinc-200 focus:outline-none focus:border-indigo-500">
+                                <option value="Box" ${selectedObject.colliderType === 'Box' ? 'selected' : ''}>Kutu (Box Collider)</option>
+                                <option value="Capsule" ${selectedObject.colliderType === 'Capsule' ? 'selected' : ''}>Kapsül (Character Collider)</option>
+                                <option value="Mesh" ${selectedObject.colliderType === 'Mesh' ? 'selected' : ''}>Özel Mesh Collider</option>
+                            </select>
+                        </div>
+                    </div>
+                `;
+            }
+
+            // Character Physics & Movement Speed
+            if (selectedObject.type === 'character') {
+                html += `
+                    <div class="border-t border-zinc-800 pt-3 space-y-3">
+                        <span class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider block"><i class="fa-solid fa-person-running mr-1"></i> Fizik & Hız Ayarları</span>
+                        
+                        <div class="flex item
